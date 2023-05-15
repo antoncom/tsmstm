@@ -50,12 +50,15 @@ function tsmstm:make_ubus()
 		["tsmodem.stm"] = {
             send = {
                  function(req, msg)
+					 	local comm = ""
+					 	local stdout = ""
                         if msg["command"] then
-                            sys.exec(string.format('echo "%s" > %s', msg["command"], tsmstm.device))
+							comm = string.format('echo "%s" > %s', msg["command"], tsmstm.device)
+                            stdout = sys.exec(comm)
                         end
                         local def_req = tsmstm.conn:defer_request(req)
                         uloop.timer(function()
-                                tsmstm.conn:reply(def_req, { answer = tsmstm.answer })
+                                tsmstm.conn:reply(def_req, { answer = tsmstm.answer, command = comm, ["stdout"] = stdout })
                                 tsmstm.conn:complete_deferred_request(def_req, 0)
                          end, 100)
                  end, {id = ubus.INT32, msg = ubus.STRING }
