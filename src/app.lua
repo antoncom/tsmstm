@@ -36,7 +36,7 @@ function tsmstm:poll()
 
             message_from_stm, err, errcode = U.read(tsmstm.fds, 1024)
             if message_from_stm then
-                tsmstm.answer = message_from_stm
+                tsmstm.answer = tsmstm.answer .. message_from_stm
             else
                 tsmstm.answer = "ERROR"
             end
@@ -59,6 +59,7 @@ function tsmstm:make_ubus()
                         local def_req = tsmstm.conn:defer_request(req)
                         uloop.timer(function()
                                 tsmstm.conn:reply(def_req, { answer = tsmstm.answer, command = comm, ["stdout"] = stdout })
+								tsmstm.answer = ""
                                 tsmstm.conn:complete_deferred_request(def_req, 0)
                          end, 100)
                  end, {id = ubus.INT32, msg = ubus.STRING }
