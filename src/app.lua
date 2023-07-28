@@ -2,10 +2,23 @@ local util = require "luci.util"
 local ubus = require "ubus"
 local uloop = require "uloop"
 local sys  = require "luci.sys"
+require "tsmodem.driver.util"
 
 
 local F = require 'posix.fcntl'
 local U = require 'posix.unistd'
+
+local signal = require("posix.signal")
+signal.signal(signal.SIGINT, function(signum)
+
+  io.write("\n")
+  print("-----------------------")
+  print("Tsmstm debug stopped.")
+  print("-----------------------")
+  io.write("\n")
+  os.exit(128 + signum)
+end)
+
 
 local tsmstm = {}
 tsmstm.conn = nil                   -- Ubus connection
@@ -35,6 +48,8 @@ function tsmstm:poll()
             local ubus_response = {}
 
             message_from_stm, err, errcode = U.read(tsmstm.fds, 1024)
+			if_debug("", "STM", "POLL", tostring(message_from_stm), "[tsmstm/app.lua]: .. err = ".. tostring(err) .. "  errcode = " ..tostring(errcode))
+
             if message_from_stm then
                 tsmstm.answer = tsmstm.answer .. message_from_stm
             else
@@ -53,13 +68,15 @@ function tsmstm:make_ubus()
 					 	local comm = ""
 					 	local stdout = ""
                         if msg["command"] then
+							tsmstm.answer = ""
 							comm = string.format('echo "%s" > %s', msg["command"], tsmstm.device)
                             stdout = sys.exec(comm)
+							if_debug("", "UBUS", "ASK", comm, "[tsmstm/app.lua]: UBUS call: tsmodem.stm send method.")
                         end
                         local def_req = tsmstm.conn:defer_request(req)
                         uloop.timer(function()
+								if_debug("", "UBUS", "ANSWER", tsmstm.answer, "[tsmstm/app.lua]: UBUS answer after 100 ms timer: tsmodem.stm send method.")
                                 tsmstm.conn:reply(def_req, { answer = tsmstm.answer, command = comm, ["stdout"] = stdout })
-								tsmstm.answer = ""
                                 tsmstm.conn:complete_deferred_request(def_req, 0)
                          end, 100)
                  end, {id = ubus.INT32, msg = ubus.STRING }
