@@ -1,0 +1,4 @@
+
+config active_sim 'active_sim'
+	option slot '1'
+

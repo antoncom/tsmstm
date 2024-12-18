@@ -79,7 +79,7 @@ function tsmstm:make_ubus()
                                 tsmstm.conn:reply(def_req, { answer = tsmstm.answer, command = comm, ["stdout"] = stdout })
                                 tsmstm.conn:complete_deferred_request(def_req, 0)
                          end, 100)
-                 end, {id = ubus.INT32, msg = ubus.STRING }
+                 end, {command = ubus.STRING }
 			 }
 		}
 	}
