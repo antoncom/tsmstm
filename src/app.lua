@@ -3,71 +3,112 @@ local ubus = require "ubus"
 local uloop = require "uloop"
 local sys  = require "luci.sys"
 
+local stm = require "tsmstm.stm"
+local switch = require "tsmstm.switch"
+local reset = require "tsmstm.reset"
+local notifier = require "tsmstm.notifier"
+local lock = require "tsmstm.lock"
+
 
 local F = require 'posix.fcntl'
 local U = require 'posix.unistd'
 
-local tsmstm = {}
-tsmstm.conn = nil                   -- Ubus connection
-tsmstm.fds = nil                    -- File descriptor
-tsmstm.fds_ev = nil                 -- Event loop descriptor
-tsmstm.device = "/dev/ttyS1"        -- STM32 port
-tsmstm.answer = ""                  -- Answer message from STM32
+local signal = require("posix.signal")
+signal.signal(signal.SIGINT, function(signum)
 
+  io.write("\n")
+  print("-----------------------")
+  print("Tsmstm debug stopped.")
+  print("-----------------------")
+  io.write("\n")
+  os.exit(128 + signum)
+end)
 
-function tsmstm:init()
-	if not tsmstm.fds then
-        local initcom = string.format("stty -F %s 1000000", tsmstm.device)
-        sys.exec(initcom)
+local conn = ubus.connect()
 
-		tsmstm.fds = F.open(tsmstm.device, F.O_RDONLY + F.O_NONBLOCK)
-		tsmstm.conn = ubus.connect()
-		if not tsmstm.conn then
-			error("Failed to connect to ubus in 'tsmstm' module")
-		end
-	end
-end
-
-function tsmstm:poll()
-    if not tsmstm.fds_ev then
-        tsmstm.fds_ev = uloop.fd_add(tsmstm.fds, function(ufd, events)
-            local message_from_stm = ""
-            local ubus_response = {}
-
-            message_from_stm, err, errcode = U.read(tsmstm.fds, 1024)
-            if message_from_stm then
-                tsmstm.answer = message_from_stm
-            else
-                tsmstm.answer = "ERROR"
-            end
-
-        end, uloop.ULOOP_READ)
-    end
-end
-
-function tsmstm:make_ubus()
+function make_ubus()
 	local ubus_methods = {
-		["tsmodem.stm"] = {
+		["tsmstm"] = {
             send = {
                  function(req, msg)
-                        if msg["command"] then
-                            sys.exec(string.format('echo "%s" > %s', msg["command"], tsmstm.device))
+					 	local comm = ""
+					 	local stdout = ""
+
+                        if not msg["owner"] then msg["owner"] = "unknown" end
+                        if not lock.is_owner_or_set_if_unlocked(msg["owner"]) then
+                            resp.status = "busy"
+                            resp.msg = "tsmstm is busy"
+                            state.conn:reply(req, resp)
+                            return
                         end
-                        local def_req = tsmstm.conn:defer_request(req)
+
+                        if msg["command"] and msg["owner"]then
+                            comm = msg["command"]
+							stdout = stm:send(comm)
+                        else
+                            conn:reply(req, { error = "No command or owner provided"})
+                            return
+                        end
+
+                        local def_req = conn:defer_request(req)
+
                         uloop.timer(function()
-                                tsmstm.conn:reply(def_req, { answer = tsmstm.answer })
-                                tsmstm.conn:complete_deferred_request(def_req, 0)
+                            local  res = tostring(stm.answer)
+                            stm.answer = ""
+                            conn:reply(def_req, { answer = res, command = comm, ["stdout"] = tostring(stdout) })
+                            conn:complete_deferred_request(def_req, 0)
+
+                            lock.unlock("", true)
                          end, 100)
-                 end, {id = ubus.INT32, msg = ubus.STRING }
-			 }
+                 end, { command = ubus.STRING, owner = ubus.STRING }
+			},
+            switch = {
+                function(req, msg)
+                        local simid
+
+                        if not msg["owner"] then msg["owner"] = "unknown" end
+                        if not lock.is_owner_or_set_if_unlocked(msg["owner"]) then
+                            resp.status = "busy"
+                            resp.msg = "tsmstm is busy"
+                            state.conn:reply(req, resp)
+                            return
+                        end
+
+                        if msg["simid"] then
+                            simid = msg["simid"]
+                            switch:start(simid)
+                        else
+                            conn:reply(req, { error = "No valid simid provided."})
+                            return
+                        end
+                        conn:reply(req, { status = "started"})
+                        lock.unlock("", true)
+                 end, { simid = ubus.STRING, owner = ubus.STRING }
+            },
+            reset = {
+                function(req, msg)
+                        if not msg["owner"] then msg["owner"] = "unknown" end
+                        if not lock.is_owner_or_set_if_unlocked(msg["owner"]) then
+                            resp.status = "busy"
+                            resp.msg = "tsmstm is busy"
+                            state.conn:reply(req, resp)
+                            return
+                        end
+
+                        reset:start(simid)
+                        conn:reply(req, { status = "started"})
+                        lock.unlock("", true)
+                 end, { owner = ubus.STRING }
+             }
 		}
 	}
-	tsmstm.conn:add( ubus_methods )
+	conn:add( ubus_methods )
+    notifier:init(ubus_methods)
 
 end
 
-tsmstm:init()
+stm:init()
 uloop.init()
-tsmstm:make_ubus()
-tsmstm:poll()
+make_ubus()
+stm:poll()
 uloop.run()
