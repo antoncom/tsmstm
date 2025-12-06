@@ -7,6 +7,7 @@ local stm = require "tsmstm.stm"
 local switch = require "tsmstm.switch"
 local reset = require "tsmstm.reset"
 local notifier = require "tsmstm.notifier"
+local note = require "tsmstm.note"
 local lock = require "tsmstm.lock"
 
 
@@ -55,7 +56,7 @@ function make_ubus()
                         uloop.timer(function()
                             local  res = tostring(stm.answer)
                             stm.answer = ""
-                            conn:reply(def_req, { answer = res, command = comm, ["stdout"] = tostring(stdout) })
+                            conn:reply(def_req, { answer = res, command = comm, note = note[comm], ["stdout"] = tostring(stdout) })
                             conn:complete_deferred_request(def_req, 0)
 
                             lock.unlock("", true)
@@ -103,7 +104,7 @@ function make_ubus()
 		}
 	}
 	conn:add( ubus_methods )
-    notifier:init(ubus_methods)
+    notifier:init(conn, ubus_methods)
 
 end
 

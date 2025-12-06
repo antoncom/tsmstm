@@ -20,7 +20,8 @@ function stm:init()
 	if not stm.fds then
         local initcom = string.format("stty -F %s 1000000", stm.device)
         sys.exec(initcom)
-		stm.fds = F.open(stm.device, F.O_RDONLY + F.O_NONBLOCK)
+		--stm.fds = F.open(stm.device, F.O_RDONLY + F.O_NONBLOCK)
+        stm.fds = F.open(stm.device, F.O_RDONLY)
 	end
 end
 
@@ -40,7 +41,6 @@ function stm:poll()
     if not stm.fds_ev then
         stm.fds_ev = uloop.fd_add(stm.fds, function(ufd, events)
             local message_from_stm = ""
-            local ubus_response = {}
 
             message_from_stm, err, errcode = U.read(stm.fds, 1024)
 
@@ -50,7 +50,10 @@ function stm:poll()
                stm.answer = "ERROR"
             end
 
-            if (#stm.answer > 2) then
+            -- Если порт ttyS1 возвращает ответ, в котором нет ни OK, ни ERROR - 
+            -- то значит ответ поступил ещё не полностью. Поэтому событие поднимаем только когда поступил OK или ERROR
+            -- т.е. дожидаемся окончания текста ответа, приходящего из порта.
+            if (#stm.answer > 2 and (string.find(stm.answer, 'OK') or string.find(stm.answer, 'ERROR'))) then
             	local evname = util.split(stm.command, "=")[1]
 	  			notifier:fire(evname, stm.command, tostring(stm.answer))
             end

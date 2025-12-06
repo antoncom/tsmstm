@@ -2,11 +2,16 @@ local util = require "luci.util"
 local uloop = require "uloop"
 
 local stm = require "tsmstm.stm"
+local if_debug = require("tsmstm.util").if_debug
+
 
 local timer = {}
 timer.service_name = "Tsmstm"
+timer.applink = nil
 
-function timer:start()
+
+function timer:start(applink)
+    timer.applink = applink
     timer.reset_1:set(timer.reset_delays["1_UNPOLL_GSM"])
 end
 
@@ -24,6 +29,7 @@ end
         4.3 ~0:SIM.PWR=0
         5. Поднять событие "GSM_RESET_FINISHED"
         6. Переключить режим "Занят" в режим "Свободен"
+        7. 
 
 ]]
 
@@ -89,7 +95,13 @@ timer.reset_5 = uloop.timer(do_reset_5)
 ----------------------
 function do_reset_6()
 ----------------------
-    -- Some staff
+    -- Повторяем сброс модема через 20 сек и до тех пор пока
+    -- не поступит задача "free"
+    if not (timer.applink.free) then
+        if_debug("Repeat resetting in 20 sec..")
+        timer.reset_1:set(20000)
+    end
+
 end
 timer.reset_6 = uloop.timer(do_reset_6)
 

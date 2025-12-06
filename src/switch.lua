@@ -3,9 +3,11 @@ local uloop = require "uloop"
 
 local stm = require "tsmstm.stm"
 
+local if_debug = require("tsmstm.util").if_debug
+
 local timer = {}
 timer.service_name = "Tsmstm"
-timer.new_simid = ""
+timer.new_slotid = ""
 
 
 --[[    Сценарий работы ]]
@@ -24,9 +26,8 @@ timer.new_simid = ""
         7. Переключить режим "Занят" в режим "Свободен"
 ]]
 
-function timer:start(new_simid)
-    timer.ubusconn = ubusconn
-    timer.new_simid = tostring(new_simid)
+function timer:start(new_slotid)
+    timer.new_slotid = tostring(new_slotid)
     timer.switch_1:set(timer.switch_delays["1_UNPOLL_GSM"])
 end
 
@@ -58,7 +59,7 @@ timer.switch_1 = uloop.timer(do_switch_1)
 ----------------------
 function do_switch_2()
 ----------------------
-    local comm = "~0:SIM.SEL=" .. timer.new_simid
+    local comm = "~0:SIM.SEL=" .. timer.new_slotid
     stm:send(comm)
     timer.switch_3:set(timer.switch_delays["3_SIM_EN_0"])
 end
@@ -102,7 +103,8 @@ timer.switch_6 = uloop.timer(do_switch_6)
 ----------------------
 function do_switch_7()
 ----------------------
-    -- Some staff
+    if_debug("Slot switched to: " .. tostring(timer.new_slotid))
+
 end
 timer.switch_7 = uloop.timer(do_switch_7)
 
