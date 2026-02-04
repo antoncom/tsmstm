@@ -14,6 +14,9 @@ local lock = require "tsmstm.lock"
 local F = require 'posix.fcntl'
 local U = require 'posix.unistd'
 
+local if_debug = require("tsmstm.util").if_debug
+
+
 local signal = require("posix.signal")
 signal.signal(signal.SIGINT, function(signum)
 
@@ -26,6 +29,24 @@ signal.signal(signal.SIGINT, function(signum)
 end)
 
 local conn = ubus.connect()
+local info = {
+    last_switch_time = 0,
+    slot = 0
+}
+
+local app = {
+    reset_aborted = false
+}
+
+local reset_abort_func = function()
+    app.reset_aborted = true
+    if_debug("Reset process ABORTED!")
+end
+
+function app:reset_abort()
+    return reset_abort_func()
+end
+
 
 function make_ubus()
 	local ubus_methods = {
@@ -67,6 +88,9 @@ function make_ubus()
                 function(req, msg)
                         local simid
 
+                        lock.unlock("", true)
+                        app:reset_abort() -- если в данный момент идёт процедура reset модема, то прерываем её
+
                         if not msg["owner"] then msg["owner"] = "unknown" end
                         if not lock.is_owner_or_set_if_unlocked(msg["owner"]) then
                             resp.status = "busy"
@@ -75,15 +99,18 @@ function make_ubus()
                             return
                         end
 
+
+
                         if msg["simid"] then
                             simid = msg["simid"]
-                            switch:start(simid)
+                            info.slot = tonumber(simid)
+                            switch:start(info.slot, app)
                         else
                             conn:reply(req, { error = "No valid simid provided."})
                             return
                         end
+                        info.last_switch_time = os.time()
                         conn:reply(req, { status = "started"})
-                        lock.unlock("", true)
                  end, { simid = ubus.STRING, owner = ubus.STRING }
             },
             reset = {
@@ -96,8 +123,27 @@ function make_ubus()
                             return
                         end
 
-                        reset:start(simid)
+                        reset:start(app)
                         conn:reply(req, { status = "started"})
+                 end, { owner = ubus.STRING }
+            },
+            info = {
+                function(req, msg)
+                        if not msg["owner"] then msg["owner"] = "unknown" end
+                        if not lock.is_owner_or_set_if_unlocked(msg["owner"]) then
+                            resp.status = "busy"
+                            resp.msg = "tsmstm is busy"
+                            state.conn:reply(req, resp)
+                            return
+                        end
+
+                        local answer =  {
+                            last_switch_time = info.last_switch_time,
+                            slot = info.slot
+                        }
+
+                        if_debug("Info asked: " .. luci.jsonc.stringify(answer))
+                        conn:reply(req, answer)
                         lock.unlock("", true)
                  end, { owner = ubus.STRING }
              }

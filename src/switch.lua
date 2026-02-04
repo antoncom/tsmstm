@@ -1,7 +1,7 @@
 local util = require "luci.util"
 local uloop = require "uloop"
-
 local stm = require "tsmstm.stm"
+local lock = require "tsmstm.lock"
 
 local if_debug = require("tsmstm.util").if_debug
 
@@ -26,7 +26,9 @@ timer.new_slotid = ""
         7. Переключить режим "Занят" в режим "Свободен"
 ]]
 
-function timer:start(new_slotid)
+
+function timer:start(new_slotid, applink)
+    timer.applink = applink
     timer.new_slotid = tostring(new_slotid)
     timer.switch_1:set(timer.switch_delays["1_UNPOLL_GSM"])
 end
@@ -51,6 +53,9 @@ timer.switch_delays = {
 ----------------------
 function do_switch_1()
 ----------------------
+    if_debug("Switch process started.")
+    if_debug("......................")
+
     util.ubus("tsmodem", "unpoll", {service="tsmstm"})
     timer.switch_2:set(timer.switch_delays["2_SIM_SEL"])
 end
@@ -103,8 +108,10 @@ timer.switch_6 = uloop.timer(do_switch_6)
 ----------------------
 function do_switch_7()
 ----------------------
-    if_debug("Slot switched to: " .. tostring(timer.new_slotid))
-
+    timer.applink.reset_aborted = false -- если перед выполнение switch был прерван reset, то восстанавливаем дальнейшую возможность reset-а
+    lock.unlock("", true)
+    if_debug("Switch process completed. Slot: " .. tostring(timer.new_slotid))
+    if_debug("---------------------------------")
 end
 timer.switch_7 = uloop.timer(do_switch_7)
 
